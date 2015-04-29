@@ -16,14 +16,22 @@ class Entity {
     private $id       = null;
     private $class    = null;
     private $table    = null;
-
-    public function __construct($id=null) {
+    
+    public function __construct($id = null) {
         self::initDatabase();
-
+        
+        $this->id = $id;
+        $this->class = get_class($this);
+        $this->table = strtolower($this->class);
+        
         // init some fields
     }
 
     public function __get($name) {
+        $this->checkExistColumn($name);
+        $this->loadDataFromDb();
+        
+        return $this->fields[$this->table . "_" . $name];
         // check, if instance is modified and throw an exception
         // get corresponding data from database if needed
         // check, if requested property name is in current class
@@ -33,6 +41,11 @@ class Entity {
     }
 
     public function __set($name, $value) {
+        $this->checkExistColumn($name);
+        
+        $value = str_replace("'", "''", $value);
+        $this->fields[$this->table . "_" . $name] = $value;
+        $this->modified = true;
         // check, if requested property name is in current class
         //    columns, parents, children or siblings and call corresponding
         //    setter with name and value as arguments or use default implementation
@@ -64,7 +77,23 @@ class Entity {
     }
 
     public function save() {
-        // execute either insert or update query, depending on instance id
+        if ( $this->modified ) {
+            $modifiedFieldsStr = '';
+            
+            foreach ($this->fields as $field => $value) {
+                $modifiedFieldsStr .= $field . "='" . $value . "',";
+            }
+            $modifiedFieldsStr = rtrim($modifiedFieldsStr, ",");
+            $query = sprintf(self::$updateQuery, $this->table, $modifiedFieldsStr);
+            
+            $query = self::$db->prepare($query);
+            
+            try {
+                $query->execute(array($this->id));
+            } catch (PDOException $e) {
+                echo $e->getMessage() . "\n";
+            }
+        }
     }
 
     public function setColumn($name, $value) {
@@ -76,6 +105,40 @@ class Entity {
         // put new value into fields array with <name>_id as a key
         // value can be a number or an instance of Entity subclass
     }
+    
+    public function loadDataFromDb() {
+        if ( $this->modified == false && $this->loaded == true ) {
+            return false;
+        }
+        
+        $query = sprintf(self::$selectQuery, $this->table);
+        $query = self::$db->prepare($query);
+        
+        try {
+            $query->execute(array($this->id));
+        } catch (PDOException $e) {
+            echo $e->getMessage() . "\n";
+        }
+        
+        $row = $query->fetch(PDO::FETCH_ASSOC);
+        
+        foreach ($this->columns as $column) {
+            $column = $this->table . "_" . $column;
+            
+            $this->fields[$column] = $row[$column];
+        }
+        
+        $this->loaded = true;
+        $this->modified = false;
+        
+        return true;
+    }
+    
+    public function checkExistColumn($field) {
+        if ( !in_array($field, $this->columns) ) {
+            throw new AttributeException;
+        }
+    }
 
     public static function all() {
         self::initDatabase();
@@ -86,7 +149,11 @@ class Entity {
     }
 
     public static function setDatabase(PDO $db) {
-        // try to guess
+        try {
+            self::$db = $db;
+        } catch (PDOException $e) {
+            echo "Error connect to DB: " . $e->getMessage() . "\n";
+        }
     }
 
     private function execute($query, $args) {
