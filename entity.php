@@ -29,7 +29,7 @@ class Entity {
 
     public function __get($name) {
         $this->checkExistColumn($name);
-        $this->loadDataFromDb();
+        $this->load();
         
         return $this->fields[$this->table . "_" . $name];
         // check, if instance is modified and throw an exception
@@ -78,21 +78,7 @@ class Entity {
 
     public function save() {
         if ( $this->modified ) {
-            $modifiedFieldsStr = '';
-            
-            foreach ($this->fields as $field => $value) {
-                $modifiedFieldsStr .= $field . "='" . $value . "',";
-            }
-            $modifiedFieldsStr = rtrim($modifiedFieldsStr, ",");
-            $query = sprintf(self::$updateQuery, $this->table, $modifiedFieldsStr);
-            
-            $query = self::$db->prepare($query);
-            
-            try {
-                $query->execute(array($this->id));
-            } catch (PDOException $e) {
-                echo $e->getMessage() . "\n";
-            }
+            $this->update();
         }
     }
 
@@ -104,34 +90,6 @@ class Entity {
     public function setParent($name, $parent) {
         // put new value into fields array with <name>_id as a key
         // value can be a number or an instance of Entity subclass
-    }
-    
-    public function loadDataFromDb() {
-        if ( $this->modified == false && $this->loaded == true ) {
-            return false;
-        }
-        
-        $query = sprintf(self::$selectQuery, $this->table);
-        $query = self::$db->prepare($query);
-        
-        try {
-            $query->execute(array($this->id));
-        } catch (PDOException $e) {
-            echo $e->getMessage() . "\n";
-        }
-        
-        $row = $query->fetch(PDO::FETCH_ASSOC);
-        
-        foreach ($this->columns as $column) {
-            $column = $this->table . "_" . $column;
-            
-            $this->fields[$column] = $row[$column];
-        }
-        
-        $this->loaded = true;
-        $this->modified = false;
-        
-        return true;
     }
     
     public function checkExistColumn($field) {
@@ -157,6 +115,18 @@ class Entity {
     }
 
     private function execute($query, $args) {
+        $query = self::$db->prepare($query);
+        
+        try {
+            $query->execute($args);
+        } catch (PDOException $e) {
+            echo $e->getMessage() . "\n";
+        }
+        
+        
+        $row = $query->fetch(PDO::FETCH_ASSOC);
+        
+        return $row;
         // execute an sql statement and handle exceptions together with transactions
     }
 
@@ -167,10 +137,41 @@ class Entity {
     }
 
     private function load() {
+        if ( $this->modified == false && $this->loaded == true ) {
+            return false;
+        }
+        
+        $row = $this->execute(sprintf(self::$selectQuery, $this->table), array($this->id));
+        
+        foreach ($this->columns as $column) {
+            $column = $this->table . "_" . $column;
+            
+            $this->fields[$column] = $row[$column];
+        }
+        
+        $this->loaded = true;
+        $this->modified = false;
+        
+        return true;
         // if current instance is not loaded yet — execute select statement and store it's result as an associative array (fields), where column names used as keys
     }
 
     private function update() {
+        $modifiedFieldsStr = '';
+        
+        foreach ($this->fields as $field => $value) {
+            $modifiedFieldsStr .= $field . "='" . $value . "',";
+        }
+        $modifiedFieldsStr = rtrim($modifiedFieldsStr, ",");
+        $query = sprintf(self::$updateQuery, $this->table, $modifiedFieldsStr);
+        
+        $query = self::$db->prepare($query);
+        
+        try {
+            $query->execute(array($this->id));
+        } catch (PDOException $e) {
+            echo $e->getMessage() . "\n";
+        }
         // generate an update query string from fields keys and values and execute it
         // use prepared statements
     }
