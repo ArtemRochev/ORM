@@ -3,7 +3,7 @@ require_once("exceptions.php");
 
 class Entity {
     private static $deleteQuery = 'DELETE FROM "%1$s" WHERE %1$s_id=?';
-    private static $insertQuery = 'INSERT INTO "%1$s" (%2$s) VALUES (%3$s)';
+    private static $insertQuery = 'INSERT INTO "%1$s" (%2$s) VALUES (%3$s) RETURNING "%1$s_id"';
     private static $listQuery   = 'SELECT * FROM "%s"';
     private static $selectQuery = 'SELECT * FROM "%1$s" WHERE %1$s_id=?';
     private static $updateQuery = 'UPDATE "%1$s" SET %2$s WHERE %1$s_id=?';
@@ -23,40 +23,37 @@ class Entity {
         $this->id = $id;
         $this->class = get_class($this);
         $this->table = strtolower($this->class);
-        
-        // init some fields
     }
 
     public function __get($name) {
         $this->checkExistColumn($name);
-        $this->load();
         
-        return $this->fields[$this->table . "_" . $name];
-        // check, if instance is modified and throw an exception
-        // get corresponding data from database if needed
-        // check, if requested property name is in current class
-        //    columns, parents, children or siblings and call corresponding
-        //    getter with name as an argument
-        // throw an exception, if attribute is unrecognized
+        if ( $this->modified ) {
+            throw new InvalidOperationException;
+        }
+        if ( !$this->loaded ) {
+            $this->load();
+        }
+        
+        return $this->getColumn($name);
     }
 
     public function __set($name, $value) {
         $this->checkExistColumn($name);
-        
-        $value = str_replace("'", "''", $value);
-        $this->fields[$this->table . "_" . $name] = $value;
-        $this->modified = true;
-        // check, if requested property name is in current class
-        //    columns, parents, children or siblings and call corresponding
-        //    setter with name and value as arguments or use default implementation
+        $this->modified = $this->setColumn($name, $value);
     }
 
     public function delete() {
-        // execute delete query with appropriate id
+        if ( $this->id == NULL ) {
+            throw new InvalidOperationException;
+        }
+        
+        $query = sprintf(self::$deleteQuery, $this->table);
+        $this->execute($query, array($this->id));
     }
 
     public function getColumn($name) {
-        // return value from fields array by <table>_<name> as a key
+        return $this->fields[$this->table . "_" . $name];
     }
 
 
@@ -78,12 +75,29 @@ class Entity {
 
     public function save() {
         if ( $this->modified ) {
-            $this->update();
+            if ( !$this->loaded ) {
+                $this->insert();
+            } else {
+                $this->update();
+            }
         }
+        
+        $this->modified = false;
     }
 
     public function setColumn($name, $value) {
-        // put new value into fields array with <table>_<name> as a key
+        $name = $this->table . "_" . $name;
+        
+        if ( $this->loaded ) {
+            if ( $this->fields[$name] == $value ) {
+                return false;
+            }
+        }
+        
+        $value = str_replace("'", "''", $value);
+        $this->fields[$name] = $value;
+        
+        return true;
     }
 
 
@@ -92,18 +106,37 @@ class Entity {
         // value can be a number or an instance of Entity subclass
     }
     
-    public function checkExistColumn($field) {
-        if ( !in_array($field, $this->columns) ) {
+    public function checkExistColumn($column) {
+        if ( !in_array($column, $this->columns) ) {
             throw new AttributeException;
         }
     }
 
     public static function all() {
         self::initDatabase();
-        // get ALL rows with ALL columns from corrensponding table
-        // for each row create an instance of appropriate class
-        // each instance must be filled with column data, a correct id and MUST NOT query a database for own fields any more
-        // return an array of istances
+        
+        $rowType = get_called_class();
+        $table = strtolower($rowType);
+        $objList = [];
+        
+        $query = sprintf(self::$listQuery, $table);
+        $list = self::$db->query($query);
+        
+        for ( $i = 0; $i < $list->rowCount(); $i++ ) {
+            $row = $list->fetch(PDO::FETCH_ASSOC);
+            $obj = new $rowType;
+            
+            foreach ($row as $property => $value) {
+                $property = substr($property, strlen($table) + 1);
+                $obj->$property = $value;
+            }
+            
+            $obj->modified = false;
+            $obj->loaded = true;
+            $objList[] = $obj;
+        }
+        
+        return $objList;
     }
 
     public static function setDatabase(PDO $db) {
@@ -123,21 +156,28 @@ class Entity {
             echo $e->getMessage() . "\n";
         }
         
-        
-        $row = $query->fetch(PDO::FETCH_ASSOC);
-        
-        return $row;
-        // execute an sql statement and handle exceptions together with transactions
+        return $query->fetch(PDO::FETCH_ASSOC);
     }
 
     private function insert() {
-        // generate an insert query string from fields keys and values and execute it
-        // use prepared statements
-        // save an insert id
+        $fieldsStr = '';
+        $valuesStr = '';
+        
+        foreach ($this->fields as $field => $value) {
+            $fieldsStr .= $field . ",";
+            $valuesStr .= "'" . $value . "',";
+        }
+        $fieldsStr = rtrim($fieldsStr, ",");
+        $valuesStr = rtrim($valuesStr, ",");
+        
+        $query = sprintf(self::$insertQuery, $this->table, $fieldsStr, $valuesStr);
+        
+        $this->id = $this->execute($query, array())[$this->table . "_id"];
+        $this->loaded = true;
     }
 
     private function load() {
-        if ( $this->modified == false && $this->loaded == true ) {
+        if ( $this->id == NULL || $this->loaded ) {
             return false;
         }
         
@@ -149,11 +189,10 @@ class Entity {
             $this->fields[$column] = $row[$column];
         }
         
-        $this->loaded = true;
         $this->modified = false;
+        $this->loaded = true;
         
         return true;
-        // if current instance is not loaded yet — execute select statement and store it's result as an associative array (fields), where column names used as keys
     }
 
     private function update() {
@@ -163,17 +202,9 @@ class Entity {
             $modifiedFieldsStr .= $field . "='" . $value . "',";
         }
         $modifiedFieldsStr = rtrim($modifiedFieldsStr, ",");
+        
         $query = sprintf(self::$updateQuery, $this->table, $modifiedFieldsStr);
-        
-        $query = self::$db->prepare($query);
-        
-        try {
-            $query->execute(array($this->id));
-        } catch (PDOException $e) {
-            echo $e->getMessage() . "\n";
-        }
-        // generate an update query string from fields keys and values and execute it
-        // use prepared statements
+        $this->execute($query, array($this->id));
     }
 
     private static function initDatabase() {
