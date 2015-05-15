@@ -26,20 +26,16 @@ class Entity {
     }
 
     public function __get($name) {
-        $this->checkExistColumn($name);
-        
         if ( $this->modified ) {
             throw new InvalidOperationException;
         }
-        if ( !$this->loaded ) {
-            $this->load();
-        }
+        
+        $this->load();
         
         return $this->getColumn($name);
     }
 
     public function __set($name, $value) {
-        $this->checkExistColumn($name);
         $this->modified = $this->setColumn($name, $value);
     }
 
@@ -75,7 +71,7 @@ class Entity {
 
     public function save() {
         if ( $this->modified ) {
-            if ( !$this->loaded ) {
+            if ( $this->id == NULL ) {
                 $this->insert();
             } else {
                 $this->update();
@@ -105,26 +101,19 @@ class Entity {
         // put new value into fields array with <name>_id as a key
         // value can be a number or an instance of Entity subclass
     }
-    
-    public function checkExistColumn($column) {
-        if ( !in_array($column, $this->columns) ) {
-            throw new AttributeException;
-        }
-    }
 
     public static function all() {
         self::initDatabase();
         
-        $rowType = get_called_class();
-        $table = strtolower($rowType);
+        $type = get_called_class();
+        $table = strtolower($type);
         $objList = [];
         
-        $query = sprintf(self::$listQuery, $table);
-        $list = self::$db->query($query);
+        $list = self::$db->query(sprintf(self::$listQuery, $table));
         
         for ( $i = 0; $i < $list->rowCount(); $i++ ) {
             $row = $list->fetch(PDO::FETCH_ASSOC);
-            $obj = new $rowType;
+            $obj = new $type;
             
             foreach ($row as $property => $value) {
                 $property = substr($property, strlen($table) + 1);
