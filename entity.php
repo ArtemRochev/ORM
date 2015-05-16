@@ -36,7 +36,8 @@ class Entity {
     }
 
     public function __set($name, $value) {
-        $this->modified = $this->setColumn($name, $value);
+    	$value = str_replace("'", "''", $value);
+        $this->setColumn($name, $value);
     }
 
     public function delete() {
@@ -82,18 +83,20 @@ class Entity {
     }
 
     public function setColumn($name, $value) {
-        $name = $this->table . "_" . $name;
+    	$this->fields[$this->table . "_" . $name] = $value;
+    	$this->modified = true;
+        // $name = $this->table . "_" . $name;
         
-        if ( $this->loaded ) {
-            if ( $this->fields[$name] == $value ) {
-                return false;
-            }
-        }
+        // if ( $this->loaded ) {
+        //     if ( $this->fields[$name] == $value ) {
+        //         return false;
+        //     }
+        // }
         
-        $value = str_replace("'", "''", $value);
-        $this->fields[$name] = $value;
+        // $value = str_replace("'", "''", $value);
+        // $this->fields[$name] = $value;
         
-        return true;
+        // return true;
     }
 
 
@@ -108,20 +111,17 @@ class Entity {
         $type = get_called_class();
         $table = strtolower($type);
         $objList = [];
+        $rowCount;
         
         $list = self::$db->query(sprintf(self::$listQuery, $table));
-        
-        for ( $i = 0; $i < $list->rowCount(); $i++ ) {
-            $row = $list->fetch(PDO::FETCH_ASSOC);
+        $list = $list->fetchAll(PDO::FETCH_ASSOC);
+        $rowCount = count($list);
+            
+        for ( $i = 0; $i < $rowCount; $i++ ) {
             $obj = new $type;
-            
-            foreach ($row as $property => $value) {
-                $property = substr($property, strlen($table) + 1);
-                $obj->$property = $value;
-            }
-            
-            $obj->modified = false;
+            $obj->fields = $list[$i];
             $obj->loaded = true;
+            
             $objList[] = $obj;
         }
         
@@ -138,7 +138,7 @@ class Entity {
 
     private function execute($query, $args) {
         $query = self::$db->prepare($query);
-        
+                
         try {
             $query->execute($args);
         } catch (PDOException $e) {
