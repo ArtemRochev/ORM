@@ -23,3 +23,10 @@ $post = new Post(3);
 echo $post->title;
 echo $post->content;
 ```
+**Get list of posts from DB:**
+```php
+foreach ( Post::all() as $post ) {
+  echo $post->title . "\n";
+  echo $post->content . "\n";
+}
+```
