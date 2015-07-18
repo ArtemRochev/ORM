@@ -1,11 +1,14 @@
-**Create new post in DB:**
+**Include and extend:**
 ```php
 require_once('DatabaseRecord.php');
 
 class Post extends DatabaseRecord {
   protected $columns = ['title', 'content'];
 }
+```
 
+**Create new post in DB:**
+```php
 $post = new Post;
 
 $post->title = 'Title of new post';
