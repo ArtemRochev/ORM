@@ -1,3 +1,4 @@
+**Create new post in DB:
 ```php
 require_once('DatabaseRecord.php');
 
