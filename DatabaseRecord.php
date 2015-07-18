@@ -1,7 +1,7 @@
 <?php
 require_once("exceptions.php");
 
-class Entity {
+class DatabaseRecord {
     private static $deleteQuery = 'DELETE FROM "%1$s" WHERE %1$s_id=?';
     private static $insertQuery = 'INSERT INTO "%1$s" (%2$s) VALUES (%3$s) RETURNING "%1$s_id"';
     private static $listQuery   = 'SELECT * FROM "%s"';
