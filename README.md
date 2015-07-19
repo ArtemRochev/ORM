@@ -24,7 +24,7 @@ $post->user_id = 2;
 $post->save();
 ```
 
-**Get post and foreign table from DB by id:**
+**Get post and user name from DB by id:**
 ```php
 $post = new Post(3);
 
