@@ -2,11 +2,12 @@
 require_once("exceptions.php");
 
 class DatabaseRecord {
-    private static $deleteQuery = 'DELETE FROM "%1$s" WHERE %1$s_id=?';
-    private static $insertQuery = 'INSERT INTO "%1$s" (%2$s) VALUES (%3$s) RETURNING "%1$s_id"';
-    private static $listQuery   = 'SELECT * FROM "%s"';
-    private static $selectQuery = 'SELECT * FROM "%1$s" WHERE %1$s_id=?';
-    private static $updateQuery = 'UPDATE "%1$s" SET %2$s WHERE %1$s_id=?';
+    private static $deleteQuery = 'DELETE FROM `%1$s` WHERE %1$s_id=?';
+    private static $insertQuery = 'INSERT INTO `%1$s` (%2$s) VALUES (%3$s)';
+    private static $listQuery   = 'SELECT * FROM `%s`';
+    private static $selectQuery = 'SELECT * FROM `%1$s` WHERE %1$s_id=?';
+    private static $updateQuery = 'UPDATE `%1$s` SET %2$s WHERE %1$s_id=?';
+    private static $lastIdQuery = 'SELECT LAST_INSERT_ID()';
 
     private static $db = null;
 
@@ -26,11 +27,17 @@ class DatabaseRecord {
     }
 
     public function __get($name) {
+        //echo "__get(): $name\n";
+        
         if ( $this->modified ) {
             throw new InvalidOperationException;
         }
         
         $this->load();
+        
+        if ( $name == $this->parent ) {
+            return $this->getParent($this->parent);
+        }
         
         return $this->getColumn($name);
     }
@@ -53,23 +60,12 @@ class DatabaseRecord {
         return $this->fields[$this->table . "_" . $name];
     }
 
-
-    public function getChildren($name) {
-        // return an array of child entity instances
-        // each child instance must have an id and be filled with data
-    }
-
     public function getParent($name) {
-        // get parent id from fields with <name>_id as a key
-        // return an instance of parent entity class with an appropriate id
+        $user = new User($this->getColumn($name . "_id"));
+        
+        return $user;
     }
-
-    public function getSiblings($name) {
-        // get parent id from fields with <name>_id as a key
-        // return an array of sibling entity instances
-        // each sibling instance must have an id and be filled with data
-    }
-
+    
     public function save() {
         if ( $this->modified ) {
             if ( $this->id == NULL ) {
@@ -85,24 +81,6 @@ class DatabaseRecord {
     public function setColumn($name, $value) {
     	$this->fields[$this->table . "_" . $name] = $value;
     	$this->modified = true;
-        // $name = $this->table . "_" . $name;
-        
-        // if ( $this->loaded ) {
-        //     if ( $this->fields[$name] == $value ) {
-        //         return false;
-        //     }
-        // }
-        
-        // $value = str_replace("'", "''", $value);
-        // $this->fields[$name] = $value;
-        
-        // return true;
-    }
-
-
-    public function setParent($name, $parent) {
-        // put new value into fields array with <name>_id as a key
-        // value can be a number or an instance of Entity subclass
     }
 
     public static function all() {
@@ -112,6 +90,8 @@ class DatabaseRecord {
         $table = strtolower($type);
         $objList = [];
         $rowCount;
+        
+        //echo sprintf(self::$listQuery, $table);
         
         $list = self::$db->query(sprintf(self::$listQuery, $table));
         $list = $list->fetchAll(PDO::FETCH_ASSOC);
@@ -136,16 +116,18 @@ class DatabaseRecord {
         }
     }
 
-    private function execute($query, $args) {
+    private function execute($query, $args, $isReturningData = true) {
         $query = self::$db->prepare($query);
-                
+             
         try {
             $query->execute($args);
         } catch (PDOException $e) {
             echo $e->getMessage() . "\n";
         }
         
-        return $query->fetch(PDO::FETCH_ASSOC);
+        if ( $isReturningData ) {
+            return $query->fetch(PDO::FETCH_ASSOC);
+        }
     }
 
     private function insert() {
@@ -161,7 +143,8 @@ class DatabaseRecord {
         
         $query = sprintf(self::$insertQuery, $this->table, $fieldsStr, $valuesStr);
         
-        $this->id = $this->execute($query, array())[$this->table . "_id"];
+        $this->execute($query, false)[$this->table . "_id"];
+        $this->id = $this->execute(self::$lastIdQuery);
         $this->loaded = true;
     }
 

@@ -1,34 +1,29 @@
 <?php
 require_once('DatabaseRecord.php');
 
-class Article extends DatabaseRecord {
-    protected $columns  = ["title", "text"];
+class User extends DatabaseRecord {
+    protected $columns  = ["name", "email"];
+    protected $parent = "";
+}
+
+class Comment extends DatabaseRecord {
+    protected $columns  = ["text", "time", "user_id"];
+    protected $parent = "user";
 }
 
 try {
-	Article::setDatabase(new PDO("pgsql:dbname=postgres;host=127.0.0.1", "postgres", "1111"));
+	$db = new PDO("mysql:dbname=book;host=127.0.0.1", "book", "1111");
+	$db->exec("set names utf8");
+	
+	DatabaseRecord::setDatabase($db);
 } catch (PDOException $e) {
 	echo "PDO error: " . $e->getMessage() . "\n";
 }
 
-// $article = new Article();
-// $article->title = 'TIT';
-// $article->text = 'CON';
-// $article->save();
+$comment = new Comment(2);
 
-// $article->title = 'TITLE';
-// $article->save();
+echo $comment->user->name . "\n";
 
-// echo $article->title . "\n";
-// echo $article->text . "\n";
-
-// for ( $i = 0; $i < 5; $i++ ) {
-// 	$article = new Article();
-// 	$article->title = "Title";
-// 	$article->content = "Mega content";
-// 	$article->save();
+// foreach ( Comment::all() as $comment ) {
+// 	echo "User: $comment->user_id [$comment->time] $comment->text\n";
 // }
-
-foreach (Article::all() as $article) {
-	echo "[" . $article->title . " - " . $article->text . "]\n";
-}
