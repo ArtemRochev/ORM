@@ -10,7 +10,7 @@ class User extends DatabaseRecord {
 }
 
 class Post extends DatabaseRecord {
-    protected $columns  = ["text", "time", "user_id"];
+    protected $columns  = ["title", "content", "user_id"];
     protected $parent = "user";
 }
 ```
