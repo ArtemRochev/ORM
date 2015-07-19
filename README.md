@@ -10,7 +10,7 @@ class User extends DatabaseRecord {
 }
 
 class Post extends DatabaseRecord {
-    protected $columns  = ["title", "content", "user_id"];
+    protected $columns  = ["content", "user_id"];
     protected $parent = "user";
 }
 ```
@@ -19,8 +19,8 @@ class Post extends DatabaseRecord {
 ```php
 $post = new Post;
 
-$post->title = 'Title of new post';
 $post->content = 'Content of new post';
+$post->user_id = 2; 
 $post->save();
 ```
 
@@ -28,14 +28,12 @@ $post->save();
 ```php
 $post = new Post(3);
 
-$post->title;
 $post->content;
 $post->user->name;
 ```
 **Get list of posts from DB:**
 ```php
 foreach ( Post::all() as $post ) {
-  $post->title;
   $post->content;
 }
 ```
