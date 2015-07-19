@@ -8,7 +8,9 @@ class DatabaseRecord {
     private static $selectQuery = 'SELECT * FROM `%1$s` WHERE %1$s_id=?';
     private static $updateQuery = 'UPDATE `%1$s` SET %2$s WHERE %1$s_id=?';
     private static $lastIdQuery = 'SELECT LAST_INSERT_ID()';
-
+    private static $charsetQuery = 'SET NAMES %1$s';
+    
+    private static $defaultEncording = 'utf8';
     private static $db = null;
 
     private $fields   = [];
@@ -82,7 +84,7 @@ class DatabaseRecord {
     	$this->fields[$this->table . "_" . $name] = $value;
     	$this->modified = true;
     }
-
+    
     public static function all() {
         self::initDatabase();
         
@@ -114,9 +116,19 @@ class DatabaseRecord {
         } catch (PDOException $e) {
             echo "Error connect to DB: " . $e->getMessage() . "\n";
         }
+        
+        self::setEncording();
     }
 
-    private function execute($query, $args, $isReturningData = true) {
+    public static function setEncording($encording = null) {
+        if ( !$encording ) {
+            $encording = self::$defaultEncording;
+        }
+        
+        self::execute(sprintf(self::$charsetQuery, $encording));
+    }
+    
+    private function execute($query, $args = null, $isReturningData = true) {
         $query = self::$db->prepare($query);
              
         try {
