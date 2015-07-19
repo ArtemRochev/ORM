@@ -24,7 +24,7 @@ $post->content = 'Content of new post';
 $post->save();
 ```
 
-**Get post from DB by id:**
+**Get post and foreign table from DB by id:**
 ```php
 $post = new Post(3);
 
