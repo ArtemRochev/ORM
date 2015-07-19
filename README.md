@@ -35,5 +35,6 @@ $post->user->name;
 ```php
 foreach ( Post::all() as $post ) {
   $post->content;
+  $post->user->name;
 }
 ```
