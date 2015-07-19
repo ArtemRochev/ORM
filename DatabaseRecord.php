@@ -55,7 +55,7 @@ class DatabaseRecord {
         }
         
         $query = sprintf(self::$deleteQuery, $this->table);
-        $this->execute($query, array($this->id));
+        $this->execute($query, array($this->id), false);
     }
 
     public function getColumn($name) {
@@ -63,6 +63,8 @@ class DatabaseRecord {
     }
 
     public function getParent($name) {
+        //echo "getParent()\n";
+        
         $user = new User($this->getColumn($name . "_id"));
         
         return $user;
@@ -125,12 +127,12 @@ class DatabaseRecord {
             $encording = self::$defaultEncording;
         }
         
-        self::execute(sprintf(self::$charsetQuery, $encording));
+        self::execute(sprintf(self::$charsetQuery, $encording), array(), false);
     }
     
-    private function execute($query, $args = null, $isReturningData = true) {
+    private function execute($query, $args, $isReturningData = true) {
         $query = self::$db->prepare($query);
-             
+        
         try {
             $query->execute($args);
         } catch (PDOException $e) {
@@ -153,10 +155,15 @@ class DatabaseRecord {
         $fieldsStr = rtrim($fieldsStr, ",");
         $valuesStr = rtrim($valuesStr, ",");
         
-        $query = sprintf(self::$insertQuery, $this->table, $fieldsStr, $valuesStr);
+        $query = sprintf(
+            self::$insertQuery,
+            $this->table,
+            $fieldsStr,
+            $valuesStr
+        );
         
-        $this->execute($query, false)[$this->table . "_id"];
-        $this->id = $this->execute(self::$lastIdQuery);
+        $this->execute($query, array(), false);
+        $this->id = $this->execute(self::$lastIdQuery, array())['LAST_INSERT_ID()'];
         $this->loaded = true;
     }
 
@@ -188,7 +195,7 @@ class DatabaseRecord {
         $modifiedFieldsStr = rtrim($modifiedFieldsStr, ",");
         
         $query = sprintf(self::$updateQuery, $this->table, $modifiedFieldsStr);
-        $this->execute($query, array($this->id));
+        $this->execute($query, array($this->id), false);
     }
 
     private static function initDatabase() {

@@ -17,11 +17,6 @@ try {
 	echo "PDO error: " . $e->getMessage() . "\n";
 }
 
-$comment = new Comment(2);
-
-echo "[" . $comment->user->name . "] ";
-echo $comment->text . "\n";
-
-// foreach ( Comment::all() as $comment ) {
-// 	echo "User: $comment->user_id [$comment->time] $comment->text\n";
-// }
+foreach ( Comment::all() as $comment ) {
+	echo "[" . $comment->user->name . "] " . $comment->text . "\n";
+}
