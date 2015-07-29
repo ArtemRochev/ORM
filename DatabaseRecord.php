@@ -87,6 +87,10 @@ class DatabaseRecord {
     	$this->modified = true;
     }
     
+    public static function find() {
+        
+    }
+    
     public static function all() {
         self::initDatabase();
         
