@@ -120,6 +120,10 @@ class DatabaseRecord {
         return new $type($id);
     }
     
+    public static function find() {
+        
+    }
+    
     public static function all() {
         self::initDatabase();
         
