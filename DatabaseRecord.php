@@ -1,15 +1,14 @@
 <?php
 
 class DatabaseRecord {
-    private static $deleteQuery = 'DELETE FROM `%s` WHERE id=?';
-    private static $insertQuery = 'INSERT INTO `%1$s` (%2$s) VALUES (%3$s)';
-    private static $selectQuery   = 'SELECT %s FROM `%s`';
-    private static $selectByIdQuery = 'SELECT * FROM `%s` WHERE id=?';
-    private static $updateQuery = 'UPDATE `%1$s` SET %2$s WHERE id=?';
-    private static $lastIdQuery = 'SELECT LAST_INSERT_ID()';
-    private static $existQuery = 'SELECT EXISTS(SELECT * FROM %1$s WHERE %2$s=?) as isExist';
-    private static $countQuery = 'SELECT count(*) as count FROM `%s`'; // fix - merge with other query
-    private static $charsetQuery = 'SET NAMES %1$s';
+    private static $deleteQuery =       'DELETE FROM `%s` WHERE id=?';
+    private static $insertQuery =       'INSERT INTO `%s` (%s) VALUES (%s)';
+    private static $selectQuery =       'SELECT %s FROM `%s`';
+    private static $selectByIdQuery =   'SELECT * FROM `%s` WHERE id=?';
+    private static $updateQuery =       'UPDATE `%s` SET %s WHERE id=?';
+    private static $lastIdQuery =       'SELECT LAST_INSERT_ID()';
+    private static $existQuery =        'SELECT EXISTS(SELECT * FROM %s WHERE %s=?) as isExist';
+    private static $charsetQuery =      'SET NAMES %s';
     
     private static $defaultEncording = 'utf8';
     private static $db = null;
@@ -217,7 +216,7 @@ class DatabaseRecord {
         }
         $fieldsStr = rtrim($fieldsStr, ",");
         $valuesStr = rtrim($valuesStr, ",");
-        //var_dump($this->fields);
+        
         $query = sprintf(
             self::$insertQuery,
             $this->table,
