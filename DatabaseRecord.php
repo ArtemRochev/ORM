@@ -1,15 +1,14 @@
 <?php
 
 class DatabaseRecord {
-    private static $deleteQuery = 'DELETE FROM `%1$s` WHERE id=?';
+    private static $deleteQuery = 'DELETE FROM `%s` WHERE id=?';
     private static $insertQuery = 'INSERT INTO `%1$s` (%2$s) VALUES (%3$s)';
-    private static $listQuery   = 'SELECT * FROM `%s`';
-    private static $selectQuery = 'SELECT * FROM `%1$s` WHERE id=?';
-    private static $selectQueryByNamedId = 'SELECT * FROM `%1$s` WHERE %1$s_id=?'; //REFACTOR!!
-    private static $selectByFieldQuery = 'SELECT * FROM `%1$s` WHERE %1$s_%2$s=?';
+    private static $selectQuery   = 'SELECT %s FROM `%s`';
+    private static $selectByIdQuery = 'SELECT * FROM `%s` WHERE id=?';
     private static $updateQuery = 'UPDATE `%1$s` SET %2$s WHERE id=?';
     private static $lastIdQuery = 'SELECT LAST_INSERT_ID()';
-    private static $existQuery = 'SELECT EXISTS(SELECT * FROM %1$s WHERE %1$s_%2$s=?) as isExist';
+    private static $existQuery = 'SELECT EXISTS(SELECT * FROM %1$s WHERE %2$s=?) as isExist';
+    private static $countQuery = 'SELECT count(*) as count FROM `%s`'; // fix - merge with other query
     private static $charsetQuery = 'SET NAMES %1$s';
     
     private static $defaultEncording = 'utf8';
@@ -38,7 +37,10 @@ class DatabaseRecord {
         $this->load();
 
         if ( $name == $this->parent ) {
-            return $this->getParent($this->parent);
+            return $this->getParent($name);
+        }
+        if ( in_array($name, $this->childrens) ) {
+            return $this->getChildren($name);
         }
         
         return $this->getColumn($name);
@@ -60,29 +62,45 @@ class DatabaseRecord {
     }
 
     public function getColumn($name) {
-        if ( $name == 'id' && isset($this->fields['id']) ) {
-            return $this->fields['id'];
+        if ( $name == 'id' ) {
+            return $this->id;
         }
         if ( $name == $this->parent ) {
 
             if ( isset($this->fields[$name . '_id']) ) {
                 return $this->fields[$name . '_id'];
             } else {
-                die('ss');
                 return $this->fields[$this->table . '_' . $name . '_id'];
             }
         }
 
-        return $this->fields[$this->table . "_" . $name];
+        return $this->fields[$name];
     }
 
     public function getParent($name) {
         return new User($this->getColumn($name));
     }
-    
+
+    public function getChildren($name) {
+        $type = ucfirst($name);
+
+        return new $type;
+    }
+
+    public function getCount($table = '', $where = []) { // fix
+        if ( $table == '' ) {
+            $table = $this->table;
+        }
+
+        $queryArgs = [];
+        $query = self::buildSelectQuery($table, 'count(*) as count', $where, $queryArgs);
+
+        return self::execute($query, $queryArgs, 'single')['count'];
+    }
+
     public function save() {
-        if ( $this->modified ) {
-            if ( $this->id == NULL ) {
+       if ( $this->modified || !$this->id ) {
+            if ( !$this->id ) {
                 $this->insert();
             } else {
                 $this->update();
@@ -93,21 +111,12 @@ class DatabaseRecord {
     }
 
     public function setColumn($name, $value) {
-        if ( $name == $this->parent . '_id' ) {
-            $this->fields[$name] = $value;
-        } else {
-            $this->fields[$this->table . "_" . $name] = $value;
-        }
-
+        $this->fields[$name] = $value;
         $this->modified = true;
     }
     
     public static function checkExists($table, $field, $value) {
         return self::execute(sprintf(self::$existQuery, $table, $field), array($value));
-    }
-    
-    public static function getRecordDataByField($table, $field, $value) {
-        return self::execute(sprintf(self::$selectByFieldQuery, $table, $field), array($value));
     }
 
     public static function findOne($id = null) {
@@ -120,32 +129,48 @@ class DatabaseRecord {
         return new $type($id);
     }
     
-    public static function find() {
-        
-    }
-    
-    public static function all() {
+    public static function all($where = []) {
         self::initDatabase();
-        
         $type = get_called_class();
         $table = strtolower($type);
+        $queryArgs = [];
         $objList = [];
         $rowCount;
-        
-        $list = self::$db->query(sprintf(self::$listQuery, $table));
-        $list = $list->fetchAll(PDO::FETCH_ASSOC);
+        $query = self::buildSelectQuery($table, '*', $where, $queryArgs);
+
+        $list = self::execute($query, $queryArgs, 'list');
         $rowCount = count($list);
-            
+
         for ( $i = 0; $i < $rowCount; $i++ ) {
             $obj = new $type;
+            $obj->id = $list[$i]['id'];
             $obj->fields = $list[$i];
             $obj->loaded = true;
             $obj->table = $table;
-            
+
             $objList[] = $obj;
         }
         
         return $objList;
+    }
+
+    private static function buildSelectQuery($from, $select = '*', $where = [], &$args = []) {
+        if ( empty($where) ) {
+            return sprintf(self::$selectQuery, $select, $from);
+        }
+
+        return sprintf(self::$selectQuery, $select, $from) . self::buildWherePartQuery($where, $args);
+    }
+
+    private static function buildWherePartQuery($params, &$whereValues = []) {
+        $where = ' WHERE';
+
+        foreach ($params as $column => $value) {
+            $where .= ' ' . $column . '=? AND';
+            $whereValues[] = $value;
+        }
+
+        return rtrim($where, 'AND'); //fix
     }
 
     public static function setDatabase(PDO $db) {
@@ -166,7 +191,7 @@ class DatabaseRecord {
         self::execute(sprintf(self::$charsetQuery, $encording), array(), false);
     }
     
-    private function execute($query, $args, $isReturningData = true) {
+    private function execute($query, $args = [], $returningData = 'single') {
         $query = self::$db->prepare($query);
 
         try {
@@ -175,8 +200,10 @@ class DatabaseRecord {
             echo $e->getMessage() . "\n";
         }
         
-        if ( $isReturningData ) {
+        if ( $returningData == 'single' ) {
             return $query->fetch(PDO::FETCH_ASSOC);
+        } else if ( $returningData == 'list' ) {
+            return $query->fetchAll(PDO::FETCH_ASSOC);
         }
     }
 
@@ -190,7 +217,7 @@ class DatabaseRecord {
         }
         $fieldsStr = rtrim($fieldsStr, ",");
         $valuesStr = rtrim($valuesStr, ",");
-        
+        //var_dump($this->fields);
         $query = sprintf(
             self::$insertQuery,
             $this->table,
@@ -198,8 +225,8 @@ class DatabaseRecord {
             $valuesStr
         );
         
-        $this->execute($query, array(), false);
-        $this->id = $this->execute(self::$lastIdQuery, array())['LAST_INSERT_ID()'];
+        $this->execute($query);
+        $this->id = $this->execute(self::$lastIdQuery, [], 'single');
         $this->loaded = true;
     }
 
@@ -208,15 +235,9 @@ class DatabaseRecord {
             return false;
         }
 
-        if ( in_array('id', $this->columns) ) {
-            $row = $this->execute(sprintf(self::$selectQueryByNamedId, $this->table), array($this->id));
-        } else {
-            $row = $this->execute(sprintf(self::$selectQuery, $this->table), array($this->id));
-        }
+        $row = $this->execute(sprintf(self::$selectByIdQuery, $this->table), [$this->id]);
 
         foreach ($this->columns as $column) {
-            $column = $this->table . "_" . $column;
-            
             $this->fields[$column] = $row[$column];
         }
 
