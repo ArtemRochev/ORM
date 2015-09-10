@@ -2,15 +2,11 @@
 
 ```php
 class User extends DatabaseRecord {
-    protected $columns  = ["name", "email", "pass"];
-    protected $parent = "";
     protected $childrens = ["post"];
 }
 
 class Post extends DatabaseRecord {
-    protected $columns  = ["title", "content", "created"];
     protected $parent = "author";
-    protected $childrens = [];
 }
 ```
 
