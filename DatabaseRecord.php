@@ -2,12 +2,12 @@
 
 class DatabaseRecord {
     private static $deleteQuery =       'DELETE FROM `%s` WHERE id=?';
-    private static $insertQuery =       'INSERT INTO `%1$s` (%2$s) VALUES (%3$s)';
+    private static $insertQuery =       'INSERT INTO `%s` (%s) VALUES (%s)';
     private static $selectQuery =       'SELECT %s FROM `%s`';
     private static $selectByIdQuery =   'SELECT * FROM `%s` WHERE id=?'; //merge with other query?
-    private static $updateQuery =       'UPDATE `%1$s` SET %2$s WHERE id=?';
+    private static $updateQuery =       'UPDATE `%s` SET %s WHERE id=?';
     private static $lastIdQuery =       'SELECT LAST_INSERT_ID()';
-    private static $setNamesQuery =      'SET NAMES %s';
+    private static $setNamesQuery =     'SET NAMES %s';
     
     private static $defaultCharacter = 'UTF8';
     private static $db = null;
@@ -18,6 +18,9 @@ class DatabaseRecord {
     private $id       = null;
     private $class    = null;
     private $table    = null;
+
+    protected $parent = '';
+    protected $childrens = [];
     
     public function __construct($id = null) {
         self::checkDatabase();
@@ -235,7 +238,7 @@ class DatabaseRecord {
         }
     }
 
-    private function insert() {
+    private function insert() { // modify this method
         $fieldsStr = '';
         $valuesStr = '';
         
@@ -263,10 +266,12 @@ class DatabaseRecord {
             return false;
         }
 
-        $row = $this->execute(sprintf(self::$selectByIdQuery, $this->table), [$this->id], 'single');
+        $queryArgs = [];
+        $query = self::buildSelectQuery($this->table, '*', ['id' => $this->id], $queryArgs);
+        $params = $this->execute($query, $queryArgs, 'single');
 
-        foreach ($this->columns as $column) {
-            $this->fields[$column] = $row[$column];
+        foreach ( $params as $column => $value ) {
+            $this->fields[$column] = $value;
         }
 
         $this->modified = false;
