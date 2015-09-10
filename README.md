@@ -22,24 +22,19 @@ $post->save();
 
 **Get post and user name by id:**
 ```php
-$post = new Post(3);
+$post = Post::findById(3);
 
 $post->title;
 $post->content;
 $post->author->name;
 ```
 
-**Get list of posts:**
+**List of all posts:**
 ```php
-foreach ( Post::all() as $post ) {
-  $post->title;
-  $post->content;
-}
+Post::all();
 ```
 
-**Get posts some author:**
+**List of some posts:**
 ```php
-Post::all([
-  'author_id' => 2
-]);
+Post::allWhere('author_id' => 2]);
 ```
