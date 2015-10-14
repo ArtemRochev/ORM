@@ -96,10 +96,10 @@ class DatabaseRecord {
 
     public function save() {
         if ( $this->modified || !$this->id ) {
-            if ( !$this->id ) {
-                $this->insert();
-            } else {
+            if ( isset($this->id ) ) {
                 $this->update();
+            } else {
+                $this->insert();
             }
         }
 
@@ -113,7 +113,7 @@ class DatabaseRecord {
         
         $query = sprintf(self::$deleteQuery, $this->table);
 
-        $this->execute($query, array($this->id));
+        self::execute($query, array($this->id));
     }
     
     public static function checkExists($table, $where) {
@@ -131,15 +131,15 @@ class DatabaseRecord {
 
     public static function findOne($where = []) {
         if ( is_numeric($where) ) {
-            self::findById($where);
+            return self::findById($where);
         }
 
-        $type = get_called_class();
-        $table = strtolower($type);
+        $class = get_called_class();
+        $table = strtolower($class);
         $queryArgs = [];
-        $query = self::buildSelectQuery($table, 'id', $where, $queryArgs);
+        $query = self::buildSelectQuery($table, '*', $where, $queryArgs);
 
-        return new $type(self::execute($query, $queryArgs, 'single')['id']); //fix
+        return self::buildObject(self::execute($query, $queryArgs, 'single'));
     }
     
     public static function all($select = '*') {
@@ -154,22 +154,27 @@ class DatabaseRecord {
         $query  = self::buildSelectQuery($table, $select, $where, $queryArgs);
         $params = self::execute($query, $queryArgs, 'list');
 
-        return self::buildObject($params);
+        return self::buildObjectList($params);
     }
 
     private static function buildObject($params) {
         $class = get_called_class();
         $table = strtolower($class);
+
+        $object = new $class;
+        $object->id = $params['id'];
+        $object->fields = $params;
+        $object->loaded = true;
+        $object->table = $table;
+
+        return $object;
+    }
+
+    private static function buildObjectList($params) {
         $objList = [];
 
-        foreach ( $params as $index => $parameterPack) {
-            $obj = new $class;
-            $obj->id = $parameterPack['id'];
-            $obj->fields = $parameterPack;
-            $obj->loaded = true;
-            $obj->table = $table;
-
-            $objList[] = $obj;
+        foreach ( $params as $paramsPack) {
+            $objList[] = self::buildObject($paramsPack);
         }
 
         if ( count($objList) == 1 ) {
@@ -200,14 +205,14 @@ class DatabaseRecord {
         return rtrim($where, 'AND'); //fix
     }
 
-    public static function setDatabase(PDO $db) {
+    public static function setDatabase(PDO $db, $charset) {
         try {
             self::$db = $db;
         } catch (PDOException $e) {
             echo "Error connect to DB: " . $e->getMessage() . "\n";
         }
         
-        self::setNames();
+        self::setNames($charset);
         self::checkDatabase();
         self::$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
@@ -220,8 +225,10 @@ class DatabaseRecord {
         self::execute(sprintf(self::$setNamesQuery, $character));
     }
     
-    private function execute($query, $args = [], $returningData = false) {
+    private static function execute($query, $args = [], $returningData = false) {
         self::checkDatabase();
+
+        _debug($query, $args);
 
         $query = self::$db->prepare($query);
 
@@ -256,8 +263,8 @@ class DatabaseRecord {
             $valuesStr
         );
         
-        $this->execute($query);
-        $this->id = $this->execute(self::$lastIdQuery, [], 'single');
+        self::execute($query);
+        $this->id = self::execute(self::$lastIdQuery, [], 'single');
         $this->loaded = true;
     }
 
@@ -268,7 +275,7 @@ class DatabaseRecord {
 
         $queryArgs = [];
         $query = self::buildSelectQuery($this->table, '*', ['id' => $this->id], $queryArgs);
-        $params = $this->execute($query, $queryArgs, 'single');
+        $params = self::execute($query, $queryArgs, 'single');
 
         foreach ( $params as $column => $value ) {
             $this->fields[$column] = $value;
@@ -289,7 +296,7 @@ class DatabaseRecord {
         $modifiedFieldsStr = rtrim($modifiedFieldsStr, ",");
         
         $query = sprintf(self::$updateQuery, $this->table, $modifiedFieldsStr);
-        $this->execute($query, array($this->id));
+        self::execute($query, array($this->id));
     }
 
     private static function checkDatabase() {
