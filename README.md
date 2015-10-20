@@ -1,12 +1,19 @@
+```
+all();
+allWhere();
+findById();
+findOne();
+save();
+delete();
+checkExists();
+```
+
+
 **Usage:**
 
 ```php
-class User extends DatabaseRecord {
-    protected $childrens = ["post"];
-}
-
 class Post extends DatabaseRecord {
-    protected $parent = "author";
+    protected $parents = ["author"];
 }
 ```
 
@@ -14,27 +21,27 @@ class Post extends DatabaseRecord {
 ```php
 $post = new Post;
 
-$post->title = 'Title';
-$post->content = 'Content';
-$post->author_id = 1; 
+$post->title = 'hello world';
 $post->save();
 ```
 
-**Get post and user name by id:**
+**Get post name by id:**
 ```php
-$post = Post::findById(3);
+$post = Post::findOne(3);
 
 $post->title;
-$post->content;
 $post->author->name;
 ```
 
-**List of all posts:**
+**List of posts:**
 ```php
 Post::all();
-```
 
-**List of some posts:**
-```php
-Post::allWhere('author_id' => 2]);
+$user = User::findOne([
+    'email' => 'jack@gmail.com'
+]);
+Post::allWhere([
+    'author_id' => $user->id,
+    'isPublished' => true
+]);
 ```
