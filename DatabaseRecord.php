@@ -1,86 +1,69 @@
 <?php
 
+require_once('SqlBuilder.php');
+
 class DatabaseRecord {
-    private static $deleteQuery =       'DELETE FROM `%s` WHERE id=?';
-    private static $insertQuery =       'INSERT INTO `%s` (%s) VALUES (%s)';
-    private static $selectQuery =       'SELECT %s FROM `%s`';
-    private static $selectByIdQuery =   'SELECT * FROM `%s` WHERE id=?'; //merge with other query?
-    private static $updateQuery =       'UPDATE `%s` SET %s WHERE id=?';
-    private static $lastIdQuery =       'SELECT LAST_INSERT_ID()';
-    private static $setNamesQuery =     'SET NAMES %s';
-    
-    private static $defaultCharacter = 'UTF8';
+    const DEFAULT_CHARSET = 'UTF8';
+    const DEFAULT_LIMIT = 500;
+
     private static $db = null;
+    protected static $parents = [];
+    protected static $childrens = [];
 
     private $fields   = [];
     private $loaded   = false;
     private $modified = false;
     private $id       = null;
-    private $class    = null;
     private $table    = null;
 
-    protected $parent = '';
-    protected $childrens = [];
-    
     public function __construct($id = null) {
         self::checkDatabase();
 
         $this->id = $id;
-        $this->class = get_class($this);
-        $this->table = strtolower($this->class);
+        $this->table = strtolower(get_class($this));
     }
 
     public function __get($name) {
         if ( $this->modified ) {
             throw new InvalidOperationException;
         }
-        
+
+        $getMethod = 'get' . ucfirst($name);
+        if ( method_exists($this, $getMethod) ) {
+            return $this->$getMethod();
+        }
+
         $this->load();
 
-        if ( $name == $this->parent ) {
-            return $this->getParent($name);
-        }
-        if ( in_array($name, $this->childrens) ) {
-            return $this->getChildren($name);
-        }
-        
-        return $this->getColumn($name);
+        return $this->getValue($name);
     }
 
     public function __set($name, $value) {
         $value = str_replace("'", "''", $value);
-        $this->setColumn($name, $value);
+        $this->setValue($name, $value);
     }
 
-    public function getColumn($name) {
+    public function getValue($name) {
+        $this->load();
+
         if ( $name == 'id' ) {
             return $this->id;
-        }
-        if ( $name == $this->parent ) {
-
-            if ( isset($this->fields[$name . '_id']) ) {
-                return $this->fields[$name . '_id'];
-            } else {
-                return $this->fields[$this->table . '_' . $name . '_id'];
-            }
         }
 
         return $this->fields[$name];
     }
 
-    public function setColumn($name, $value) {
+    public function setValue($name, $value) {
         $this->fields[$name] = $value;
         $this->modified = true;
     }
 
-    public function getParent($name) {
-        return new User($this->getColumn($name)); //fix
+    public function getOne($className, $selfColumn, $otherColumn) {
+        return $className::findOne([$otherColumn => $this->getValue($selfColumn)]);
     }
 
-    public function getChildren($name) {
-        $class = ucfirst($name);
-
-        return new $class;
+    public function getMany($className, $selfColumn, $otherColumn) {
+        return $className::find([$otherColumn => $this->getValue($selfColumn)]);
     }
 
     public function getCount($table = '', $where = []) {
@@ -92,6 +75,14 @@ class DatabaseRecord {
         $query = self::buildSelectQuery($table, 'count(*) as count', $where, $queryArgs);
 
         return self::execute($query, $queryArgs, 'single')['count'];
+    }
+
+    public function getFields() {
+        return $this->fields;
+    }
+
+    public static function getClass() {
+        return get_called_class();
     }
 
     public function save() {
@@ -110,12 +101,12 @@ class DatabaseRecord {
         if ( $this->id == NULL ) {
             throw new InvalidOperationException;
         }
-        
+
         $query = sprintf(self::$deleteQuery, $this->table);
 
         self::execute($query, array($this->id));
     }
-    
+
     public static function checkExists($table, $where) {
         $queryArgs = [];
         $query = self::buildSelectQuery($table, 'count(*) as count', $where, $queryArgs);
@@ -123,35 +114,35 @@ class DatabaseRecord {
         return self::execute($query, $queryArgs, 'single');
     }
 
-    public static function findById($id) {
-        $class = get_called_class();
-
-        return new $class($id);
-    }
-
     public static function findOne($where = []) {
         if ( is_numeric($where) ) {
-            return self::findById($where);
+            $class = get_called_class();
+            return new $class($where);
         }
 
         $class = get_called_class();
         $table = strtolower($class);
         $queryArgs = [];
-        $query = self::buildSelectQuery($table, '*', $where, $queryArgs);
+        $query = SqlBuilder::buildSelectQuery($table, '*', $where, $queryArgs);
+        $params = self::execute($query, $queryArgs, 'single');
 
-        return self::buildObject(self::execute($query, $queryArgs, 'single'));
-    }
-    
-    public static function all($select = '*') {
-        return self::allWhere([], $select);
+        if ( !$params ) {
+            return false;
+        }
+
+        return self::buildObject($params);
     }
 
-    public static function allWhere($where = [], $select = '*') {
-        $type = get_called_class();
-        $table = strtolower($type);
+    public static function all($selectedColumns = '*') {
+        return self::find([], $selectedColumns);
+    }
+
+    public static function find($where = [], $select = '*') {
+        $class = get_called_class();
+        $table = strtolower($class);
         $queryArgs = [];
 
-        $query  = self::buildSelectQuery($table, $select, $where, $queryArgs);
+        $query  = SqlBuilder::buildSelectQuery($table, $select, $where, $queryArgs);
         $params = self::execute($query, $queryArgs, 'list');
 
         return self::buildObjectList($params);
@@ -177,41 +168,18 @@ class DatabaseRecord {
             $objList[] = self::buildObject($paramsPack);
         }
 
-        if ( count($objList) == 1 ) {
-            return $objList[0];
-        }
-
         return $objList;
     }
 
-    private static function buildSelectQuery($from, $select = '*', $where = [], &$args = []) {
-        $query = sprintf(self::$selectQuery, $select, $from);
 
-        if ( !empty($where) ) {
-            $query .= self::buildWherePartQuery($where, $args);
-        }
 
-        return $query;
-    }
-
-    private static function buildWherePartQuery($params, &$whereValues = []) {
-        $where = ' WHERE';
-
-        foreach( $params as $column => $value ) {
-            $where .= ' ' . $column . '=? AND';
-            $whereValues[] = $value;
-        }
-
-        return rtrim($where, 'AND'); //fix
-    }
-
-    public static function setDatabase(PDO $db, $charset) {
+    public static function setDatabase(PDO $db, $charset = self::DEFAULT_CHARSET) {
         try {
             self::$db = $db;
         } catch (PDOException $e) {
             echo "Error connect to DB: " . $e->getMessage() . "\n";
         }
-        
+
         self::setNames($charset);
         self::checkDatabase();
         self::$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -221,14 +189,12 @@ class DatabaseRecord {
         if ( empty($character) ) {
             $character = self::$defaultCharacter;
         }
-        
-        self::execute(sprintf(self::$setNamesQuery, $character));
+
+        self::execute(sprintf(SqlBuilder::$setNamesQuery, $character));
     }
-    
+
     private static function execute($query, $args = [], $returningData = false) {
         self::checkDatabase();
-
-        _debug($query, $args);
 
         $query = self::$db->prepare($query);
 
@@ -237,7 +203,7 @@ class DatabaseRecord {
         } catch (PDOException $e) {
             echo $e->getMessage() . "\n";
         }
-        
+
         if ( $returningData == 'single' ) {
             return $query->fetch(PDO::FETCH_ASSOC);
         } else if ( $returningData == 'list' ) {
@@ -248,7 +214,7 @@ class DatabaseRecord {
     private function insert() { // modify this method
         $fieldsStr = '';
         $valuesStr = '';
-        
+
         foreach ($this->fields as $field => $value) {
             $fieldsStr .= $field . ",";
             $valuesStr .= "'" . $value . "',";
@@ -262,7 +228,7 @@ class DatabaseRecord {
             $fieldsStr,
             $valuesStr
         );
-        
+
         self::execute($query);
         $this->id = self::execute(self::$lastIdQuery, [], 'single');
         $this->loaded = true;
@@ -274,7 +240,7 @@ class DatabaseRecord {
         }
 
         $queryArgs = [];
-        $query = self::buildSelectQuery($this->table, '*', ['id' => $this->id], $queryArgs);
+        $query = SqlBuilder::buildSelectQuery($this->table, '*', ['id' => $this->id], $queryArgs);
         $params = self::execute($query, $queryArgs, 'single');
 
         foreach ( $params as $column => $value ) {
@@ -283,18 +249,18 @@ class DatabaseRecord {
 
         $this->modified = false;
         $this->loaded = true;
-        
+
         return true;
     }
 
     private function update() {
         $modifiedFieldsStr = '';
-        
+
         foreach ($this->fields as $field => $value) {
             $modifiedFieldsStr .= $field . "='" . $value . "',";
         }
         $modifiedFieldsStr = rtrim($modifiedFieldsStr, ",");
-        
+
         $query = sprintf(self::$updateQuery, $this->table, $modifiedFieldsStr);
         self::execute($query, array($this->id));
     }
